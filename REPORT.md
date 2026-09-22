@@ -98,3 +98,36 @@
 ---
 
 *Raport wygenerowany automatycznie przez Dockhand + GitHub Actions*
+
+---
+
+## 🔧 Naprawa skanowania lokalnego — 2026-09-22
+
+**Kontekst:** Lokalne skanowanie przez Dockhand (kontener `fnsys/dockhand:v1.0.48`,
+środowisko `local` id=1) zawieszało się na dużych obrazach i kończyło
+`FATAL: context deadline exceeded` (exit 1) — przy `nextcloud:stable` skan padał
+po ok. 5 minutach, zanim zdążył się zakończyć.
+
+**Przyczyny i naprawy (naprawiono w pełni):**
+
+1. **Trivy — brak `--timeout`** → Dockhand uruchamia Trivy z domyślnym limitem
+   5 minut. Dodano `--timeout 30m` w Dockhand (`default_trivy_args` oraz
+   `env_1_trivy_cli_args`) — `nextcloud:stable` zeskanowany **exit 0 w 128 s**,
+   pełny raport 2887 podatności w poprawnym JSON (walidacja reprodukcją 1:1
+   komendy Dockhanda, cache `dockhand-trivy-db`).
+2. **Grype — uszkodzony cache DB** → w wolumenie `dockhand-grype-db` zalegały
+   porwane pobierania bazy podatności (5,6 GB zamiast ~2,1 GB), przez co skan
+   grype zerwał się na transferze obrazu z daemona (zakleszczony kontener,
+   `image.tar` 64 B bez postępu). Usunięto resztki `grype-db-download*`
+   (oszczędność 3,5 GB), pozostawiono aktualną bazę `/c/6/vulnerability.db`.
+3. **Grype — zawieszony transfer obrazu** → kill zakleszczonego kontenera
+   skanera + restart Dockhanda (czysty stan) + poprawna baza DB; grype wraca
+   do normalnego cyklu skanowania.
+4. **CI (ten workflow)** → podbity timeout Trivy action z 10m na 15m dla
+   obrazów longer-scan (np. eclipse-temurin, flaresolverr).
+
+**Weryfikacja:** lokalne skany Trivy (`alpine`, `nextcloud:stable`,
+`qbittorrent`, ...) przechodzą z rc=0; Dockhand `healthy`; SaaS CI reaguje na
+push i odświeża `merged-scans.json` w tym repozytorium.
+
+*Raport naprawy dodany 2026-09-22 — wake po naprawie skanerów Dockhanda.*
